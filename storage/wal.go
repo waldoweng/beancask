@@ -219,3 +219,8 @@ func (b *BitCaskLogFile) Deactivate() error {
 	}
 	return nil
 }
+
+// Sync for
+func (b *BitCaskLogFile) Sync() error {
+	return b.FileHandle.Sync()
+}

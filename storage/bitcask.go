@@ -33,7 +33,8 @@ type BHashTable interface {
 type WALFile interface {
 	RenameFile(name string) error
 	RemoveFile() error
-	Deactivate() (err error)
+	Deactivate() error
+	Sync() error
 	AppendRecord(r Record, sync bool) (off int64, len int, err error)
 	ReadRecord(off int64, len int, r *Record) error
 	IteratorRecord() <-chan struct {
@@ -255,40 +256,54 @@ func (b *Bitcask) RealSet() {
 		record Record
 		result chan error
 	}
+	var errorQ []error
 	for {
 		select {
 		case witem := <-b.wchan:
 			itemQ = append(itemQ, witem)
 		case <-ticker.C:
 			if len(itemQ) != 0 {
-				b.mutex.Lock()
-				for _, witem := range itemQ {
-					offset, len, err := b.activeInstance.walFile.AppendRecord(witem.record, true)
-					if err != nil {
-						log.Fatal("append key [", witem.key, "] to active file fail, data may be corrupted!")
-						witem.result <- beancaskError.ErrorSystemInternal
-					}
-
-					b.activeInstance.hashTable.Set(witem.key, HashItem{
-						Wal:     b.activeInstance.walFile,
-						Len:     len,
-						Offset:  offset,
-						Tmstamp: time.Now().UnixNano(),
-					})
-
-					if int(offset)+len > 128*1024 {
-						err = b.RotateInstance()
-						if err != nil {
-							log.Fatal("rotate instance fail, disk may be disfunctioning!")
-							witem.result <- beancaskError.ErrorSystemInternal
+				func() {
+					b.mutex.Lock()
+					defer func() {
+						for i, err := range errorQ {
+							itemQ[i].result <- err
 						}
-						go b.Compact()
-					}
+						itemQ, errorQ = itemQ[:0], errorQ[:0]
+						b.activeInstance.walFile.Sync()
+						b.mutex.Unlock()
+					}()
 
-					witem.result <- nil
-				}
-				itemQ = itemQ[:0]
-				b.mutex.Unlock()
+					for _, witem := range itemQ {
+						offset, len, err := b.activeInstance.walFile.AppendRecord(witem.record, false)
+						if err != nil {
+							log.Fatal("append key [", witem.key, "] to active file fail, data may be corrupted!")
+							errorQ = append(errorQ, beancaskError.ErrorSystemInternal)
+							continue
+						}
+
+						b.activeInstance.hashTable.Set(witem.key, HashItem{
+							Wal:     b.activeInstance.walFile,
+							Len:     len,
+							Offset:  offset,
+							Tmstamp: time.Now().UnixNano(),
+						})
+
+						if int(offset)+len > 128*1024 {
+							b.activeInstance.walFile.Sync()
+							err = b.RotateInstance()
+							if err != nil {
+								log.Fatal("rotate instance fail, disk may be disfunctioning!")
+								errorQ = append(errorQ, beancaskError.ErrorSystemInternal)
+								continue
+							}
+							go b.Compact()
+						}
+
+						errorQ = append(errorQ, nil)
+						continue
+					}
+				}()
 			}
 		}
 	}

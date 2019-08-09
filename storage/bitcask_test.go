@@ -132,6 +132,17 @@ func BenchmarkRandomReadWrite(benchmark *testing.B) {
 	}
 }
 
+func BenchmarkConcurrentWrite(benchmark *testing.B) {
+	benchmark.SetParallelism(100)
+	benchmark.RunParallel(func(pb *testing.PB) {
+		var i int32
+		for pb.Next() {
+			i = i + 1
+			b.Set(fmt.Sprintf("test concurrent write key %d", i), fmt.Sprintf("test concurrent write value %d", i))
+		}
+	})
+}
+
 func TestMain(m *testing.M) {
 	b = NewBitcask()
 	result := m.Run()
