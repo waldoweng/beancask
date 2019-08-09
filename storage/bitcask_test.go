@@ -55,23 +55,24 @@ func TestAllSet(t *testing.T) {
 }
 
 func TestAllGet(t *testing.T) {
-	for i := 0; i < 5000; i++ {
-		err := b.Set(fmt.Sprintf("test all get key %d", i), fmt.Sprintf("test all get value %d", i))
+	localMap := make(map[string]string)
+	for i := 0; i < 10000; i++ {
+		key := fmt.Sprintf("benchmark all read key %d", rand.Intn(1000000))
+		value := fmt.Sprintf("benchmark all read value %d", rand.Intn(1000000))
+		localMap[key] = value
+		err := b.Set(key, value)
 		if err != nil {
-			t.Errorf("TestAllSet write %d fail\n", i)
+			t.Errorf("BenchmarkAllRead prepare data %d fail\n", i)
 		}
 	}
 
-	for i := 0; i < 5000; i++ {
-		key := fmt.Sprintf("test all get key %d", i)
-		expectValue := fmt.Sprintf("test all get value %d", i)
-
-		value, err := b.Get(key)
+	for k, v := range localMap {
+		value, err := b.Get(k)
 		if err != nil {
-			t.Errorf("TestAllGet read key[%s] fail\n", key)
+			t.Errorf("BenchmarkAllRead read key[%s] fail[%s]\n", k, err.Error())
 		}
-		if value != expectValue {
-			t.Errorf("TestAllGet read key[%s] got[%s] want[%s]\n", key, value, expectValue)
+		if value != v {
+			t.Errorf("BenchmarkAllRead read key[%s] got[%s] want[%s]\n", k, value, v)
 		}
 	}
 }
@@ -87,25 +88,25 @@ func BenchmarkAllWrite(benchmark *testing.B) {
 
 func BenchmarkAllRead(benchmark *testing.B) {
 	benchmark.StopTimer()
+	localMap := make(map[string]string)
 	for i := 0; i < 10000; i++ {
-		err := b.Set(fmt.Sprintf("benchmark all read key %d", i), fmt.Sprintf("benchmark all read value %d", i))
+		key := fmt.Sprintf("benchmark all read key %d", rand.Intn(1000000))
+		value := fmt.Sprintf("benchmark all read value %d", rand.Intn(1000000))
+		localMap[key] = value
+		err := b.Set(key, value)
 		if err != nil {
 			benchmark.Errorf("BenchmarkAllRead prepare data %d fail\n", i)
 		}
 	}
 
 	benchmark.StartTimer()
-	for i := 0; i < benchmark.N; i++ {
-		randn := rand.Intn(10000)
-		key := fmt.Sprintf("benchmark all read key %d", randn)
-		expectValue := fmt.Sprintf("benchmark all read value %d", randn)
-
-		value, err := b.Get(key)
+	for k, v := range localMap {
+		value, err := b.Get(k)
 		if err != nil {
-			benchmark.Errorf("BenchmarkAllRead read key[%s] fail\n", key)
+			benchmark.Errorf("BenchmarkAllRead read key[%s] fail\n", k)
 		}
-		if value != expectValue {
-			benchmark.Errorf("BenchmarkAllRead read key[%s] got[%s] want[%s]\n", key, value, expectValue)
+		if value != v {
+			benchmark.Errorf("BenchmarkAllRead read key[%s] got[%s] want[%s]\n", k, value, v)
 		}
 	}
 }
@@ -138,7 +139,7 @@ func BenchmarkConcurrentWrite(benchmark *testing.B) {
 		var i int32
 		for pb.Next() {
 			i = i + 1
-			b.Set(fmt.Sprintf("test concurrent write key %d", i), fmt.Sprintf("test concurrent write value %d", i))
+			b.Set(fmt.Sprintf("benchmark concurrent write key %d", i), fmt.Sprintf("benchmark concurrent write value %d", i))
 		}
 	})
 }
