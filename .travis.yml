@@ -6,7 +6,6 @@ language: go
  
 go:
     - 1.9
-    - tip
  
 sudo: required
  
