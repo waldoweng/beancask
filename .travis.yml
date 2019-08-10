@@ -10,7 +10,8 @@ go:
 sudo: required
  
 install:
-  - echo "install"
+    go build github.com/waldoweng/beancask
  
 script:
-  - echo "script"
+    go test -timeout=30m github.com/waldoweng/beancask/storage -run ^$ -v
+    go test -benchmem -run=^$ github.com/waldoweng/beancask/storage -bench ^$ -timeout=30m -v
