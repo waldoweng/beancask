@@ -33,6 +33,7 @@ type BHashTable interface {
 type WALFile interface {
 	RenameFile(name string) error
 	RemoveFile() error
+	CloseFile(remove bool) error
 	Deactivate() error
 	Sync() error
 	AppendRecord(r Record, sync bool) (off int64, len int, err error)
@@ -423,8 +424,8 @@ func (b *Bitcask) Compact() error {
 	return nil
 }
 
-// Destory for
-func (b *Bitcask) Destory() {
+// WaitAllForCloseAndExec for
+func (b *Bitcask) WaitAllForCloseAndExec(f func()) {
 	// ensure compacting is done
 	swaped := false
 	for !swaped {
@@ -436,8 +437,25 @@ func (b *Bitcask) Destory() {
 		atomic.CompareAndSwapInt32(&b.compacting, 1, 0)
 	}()
 
-	b.activeInstance.walFile.RemoveFile()
-	for _, ins := range b.instances {
-		ins.walFile.RemoveFile()
-	}
+	f()
+}
+
+// Destory for
+func (b *Bitcask) Destory() {
+	b.WaitAllForCloseAndExec(func() {
+		b.activeInstance.walFile.RemoveFile()
+		for _, ins := range b.instances {
+			ins.walFile.RemoveFile()
+		}
+	})
+}
+
+// Close for
+func (b *Bitcask) Close() {
+	b.WaitAllForCloseAndExec(func() {
+		b.activeInstance.walFile.CloseFile(false)
+		for _, ins := range b.instances {
+			ins.walFile.CloseFile(false)
+		}
+	})
 }

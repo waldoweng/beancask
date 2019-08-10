@@ -196,6 +196,12 @@ func (b *BitCaskLogFile) RenameFile(name string) error {
 
 // RemoveFile for
 func (b *BitCaskLogFile) RemoveFile() error {
+	b.CloseFile(true)
+	return nil
+}
+
+// CloseFile for
+func (b *BitCaskLogFile) CloseFile(remove bool) error {
 	if b.FileHandle != nil {
 		b.FileHandle.Close()
 		b.FileHandle = nil
@@ -206,7 +212,9 @@ func (b *BitCaskLogFile) RemoveFile() error {
 		b.FileHandleR = nil
 	}
 
-	os.Remove(b.FileName)
+	if remove {
+		os.Remove(b.FileName)
+	}
 	b.FileName = ""
 	return nil
 }

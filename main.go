@@ -11,7 +11,7 @@ import (
 
 // Storage for
 type Storage struct {
-	bitbask *storage.Bitcask
+	bitcask *storage.Bitcask
 }
 
 // Data for
@@ -47,7 +47,7 @@ func (u Storage) WebService() *restful.WebService {
 
 func (u Storage) get(request *restful.Request, response *restful.Response) {
 	key := request.PathParameter("key")
-	value, err := u.bitbask.Get(key)
+	value, err := u.bitcask.Get(key)
 	if err != nil {
 		response.WriteErrorString(http.StatusNotFound, err.Error())
 	} else {
@@ -59,7 +59,7 @@ func (u *Storage) set(request *restful.Request, response *restful.Response) {
 	data := new(Data)
 	err := request.ReadEntity(&data)
 	if err == nil {
-		u.bitbask.Set(data.Key, data.Value)
+		u.bitcask.Set(data.Key, data.Value)
 		response.WriteEntity(data)
 	} else {
 		response.WriteError(http.StatusInternalServerError, err)
@@ -68,7 +68,7 @@ func (u *Storage) set(request *restful.Request, response *restful.Response) {
 
 func main() {
 	u := Storage{
-		storage.NewBitcask(),
+		bitcask: storage.NewBitcask(),
 	}
 	restful.DefaultContainer.Add(u.WebService())
 
@@ -81,4 +81,6 @@ func main() {
 	restful.DefaultContainer.Filter(cors.Filter)
 
 	log.Fatal(http.ListenAndServe(":8080", nil))
+
+	u.bitcask.Close()
 }
