@@ -16,8 +16,8 @@ install:
     - go build github.com/waldoweng/beancask
  
 script:
-    - go test -timeout=30m github.com/waldoweng/beancask/storage -run ^$ -v -race -coverprofile=coverage.txt -covermode=atomic
-    - go test -benchmem -run=^$ github.com/waldoweng/beancask/storage -bench ^$ -timeout=30m -v
+    - go test -timeout=30m github.com/waldoweng/beancask/storage -v -race -coverprofile=coverage.txt -covermode=atomic
+    - go test -benchmem -run=^$ github.com/waldoweng/beancask/storage -bench . -timeout=30m -v
 
 after_success:
     - bash <(curl -s https://codecov.io/bash)
