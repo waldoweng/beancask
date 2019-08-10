@@ -10,6 +10,8 @@ go:
 sudo: required
  
 install:
+    go get -d github.com/emicklei/go-restful
+    go get -d github.com/emicklei/go-restful-openapi
     go build github.com/waldoweng/beancask
  
 script:
