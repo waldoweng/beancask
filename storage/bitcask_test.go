@@ -12,14 +12,14 @@ import (
 
 var b *Bitcask
 
-func TestSimpleSet(t *testing.T) {
+func TestBitcask_SimpleSet(t *testing.T) {
 	err := b.Set("test key", "test value")
 	if err != nil {
 		t.Error("TestSimpleSet fail")
 	}
 }
 
-func TestEmptyGet(t *testing.T) {
+func TestBitcask_EmptyGet(t *testing.T) {
 	value, err := b.Get("test empty value key")
 	if err != beancaskError.ErrorDataNotFound {
 		t.Errorf("TestEmptyGet get value fail err:%s\n", err.Error())
@@ -30,7 +30,7 @@ func TestEmptyGet(t *testing.T) {
 	}
 }
 
-func TestSimpleGet(t *testing.T) {
+func TestBitcask_SimpleGet(t *testing.T) {
 	err := b.Set("test key", "test value of get")
 	if err != nil {
 		t.Error("TestSimpleGet set value fail")
@@ -46,7 +46,7 @@ func TestSimpleGet(t *testing.T) {
 	}
 }
 
-func TestAllSet(t *testing.T) {
+func TestBitcask_AllSet(t *testing.T) {
 	for i := 0; i < 5000; i++ {
 		err := b.Set(fmt.Sprintf("test all set key %d", i), fmt.Sprintf("test all set value %d", i))
 		if err != nil {
@@ -55,7 +55,7 @@ func TestAllSet(t *testing.T) {
 	}
 }
 
-func TestAllGet(t *testing.T) {
+func TestBitcask_AllGet(t *testing.T) {
 	localMap := make(map[string]string)
 	for i := 0; i < 10000; i++ {
 		key := fmt.Sprintf("test all read key %d", rand.Intn(1000))
@@ -78,7 +78,7 @@ func TestAllGet(t *testing.T) {
 	}
 }
 
-func BenchmarkAllWrite(benchmark *testing.B) {
+func BenchmarkBitcask_AllWrite(benchmark *testing.B) {
 	for i := 0; i < benchmark.N; i++ {
 		err := b.Set(fmt.Sprintf("benchmark all write key %d", i), fmt.Sprintf("benchmark all write value %d", i))
 		if err != nil {
@@ -87,7 +87,7 @@ func BenchmarkAllWrite(benchmark *testing.B) {
 	}
 }
 
-func BenchmarkAllRead(benchmark *testing.B) {
+func BenchmarkBitcask_AllRead(benchmark *testing.B) {
 	benchmark.StopTimer()
 	localMap := make(map[string]string)
 	for i := 0; i < 10000; i++ {
@@ -101,18 +101,24 @@ func BenchmarkAllRead(benchmark *testing.B) {
 	}
 
 	benchmark.StartTimer()
-	for k, v := range localMap {
-		value, err := b.Get(k)
-		if err != nil {
-			benchmark.Errorf("BenchmarkAllRead read key[%s] fail\n", k)
-		}
-		if value != v {
-			benchmark.Errorf("BenchmarkAllRead read key[%s] got[%s] want[%s]\n", k, value, v)
+	for i := 0; i < benchmark.N; {
+		for k, v := range localMap {
+			value, err := b.Get(k)
+			if err != nil {
+				benchmark.Errorf("BenchmarkAllRead read key[%s] fail\n", k)
+			}
+			if value != v {
+				benchmark.Errorf("BenchmarkAllRead read key[%s] got[%s] want[%s]\n", k, value, v)
+			}
+			i++
+			if i >= benchmark.N {
+				break
+			}
 		}
 	}
 }
 
-func BenchmarkRandomReadWrite(benchmark *testing.B) {
+func BenchmarkBitcask_RandomReadWrite(benchmark *testing.B) {
 	for i := 0; i < benchmark.N; i++ {
 		switch rand.Intn(2) {
 		case 0:
@@ -134,7 +140,7 @@ func BenchmarkRandomReadWrite(benchmark *testing.B) {
 	}
 }
 
-func BenchmarkConcurrentWrite(benchmark *testing.B) {
+func BenchmarkBitcask_ConcurrentWrite(benchmark *testing.B) {
 	benchmark.SetParallelism(100)
 	benchmark.RunParallel(func(pb *testing.PB) {
 		var i int32
