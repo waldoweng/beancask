@@ -1,0 +1,16 @@
+branches:
+    only:
+        - r0.0.1
+
+language: go
+ 
+go:
+  - 1.9
+ 
+sudo: required
+ 
+install:
+  - echo "install"
+ 
+script:
+  - echo "script"
