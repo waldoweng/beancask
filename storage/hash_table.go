@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-// HashItem for
+// HashItem struct of hash table entry
 type HashItem struct {
 	Wal     WALFile
 	Len     int
@@ -13,17 +13,17 @@ type HashItem struct {
 	Tmstamp int64
 }
 
-// CreateSimpleHashTable for
+// CreateSimpleHashTable create a new hash table
 func CreateSimpleHashTable() *SimpleHashTable {
 	return &SimpleHashTable{}
 }
 
-// SimpleHashTable for
+// SimpleHashTable struct of hash table
 type SimpleHashTable struct {
 	hash sync.Map
 }
 
-// Get for
+// Get get value of key from the hash table
 func (s *SimpleHashTable) Get(key string) (h HashItem, err error) {
 	if h, ok := s.hash.Load(key); ok {
 		return h.(interface{}).(HashItem), nil
@@ -31,19 +31,19 @@ func (s *SimpleHashTable) Get(key string) (h HashItem, err error) {
 	return HashItem{}, errors.New("no found")
 }
 
-// Set for
+// Set set value of key to the hash table
 func (s *SimpleHashTable) Set(key string, h HashItem) error {
 	s.hash.Store(key, h)
 	return nil
 }
 
-// Exists for
+// Exists check whether a key exists on the hash table
 func (s *SimpleHashTable) Exists(key string) (exists bool) {
 	_, ok := s.hash.Load(key)
 	return ok
 }
 
-// IteratorItem for
+// IteratorItem return a channel of the hash table for iterating
 func (s *SimpleHashTable) IteratorItem() <-chan struct {
 	key   string
 	value HashItem
@@ -68,5 +68,4 @@ func (s *SimpleHashTable) IteratorItem() <-chan struct {
 		close(chnl)
 	}()
 	return chnl
-
 }

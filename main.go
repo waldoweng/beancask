@@ -9,19 +9,18 @@ import (
 	"github.com/waldoweng/beancask/storage"
 )
 
-// Storage for
-type Storage struct {
+// Wsgi wsgi-like struct of the restful service
+type Wsgi struct {
 	bitcask *storage.Bitcask
 }
 
-// Data for
+// Data struct for input and output data
 type Data struct {
 	Key   string `json:"key" description:"key of the data"`
 	Value string `json:"value" description:"value of the data" default:""`
 }
 
-// WebService for
-func (u Storage) WebService() *restful.WebService {
+func (u Wsgi) webService() *restful.WebService {
 	ws := new(restful.WebService)
 	ws.
 		Path("/bitcask").
@@ -45,7 +44,7 @@ func (u Storage) WebService() *restful.WebService {
 	return ws
 }
 
-func (u Storage) get(request *restful.Request, response *restful.Response) {
+func (u *Wsgi) get(request *restful.Request, response *restful.Response) {
 	key := request.PathParameter("key")
 	value, err := u.bitcask.Get(key)
 	if err != nil {
@@ -55,7 +54,7 @@ func (u Storage) get(request *restful.Request, response *restful.Response) {
 	}
 }
 
-func (u *Storage) set(request *restful.Request, response *restful.Response) {
+func (u *Wsgi) set(request *restful.Request, response *restful.Response) {
 	data := new(Data)
 	err := request.ReadEntity(&data)
 	if err == nil {
@@ -67,10 +66,10 @@ func (u *Storage) set(request *restful.Request, response *restful.Response) {
 }
 
 func main() {
-	u := Storage{
+	u := Wsgi{
 		bitcask: storage.NewBitcask(),
 	}
-	restful.DefaultContainer.Add(u.WebService())
+	restful.DefaultContainer.Add(u.webService())
 
 	cors := restful.CrossOriginResourceSharing{
 		AllowedHeaders: []string{"Content-Type", "Accept"},

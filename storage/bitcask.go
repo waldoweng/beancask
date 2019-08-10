@@ -18,7 +18,9 @@ const dataFileNamePattern string = "dataFile.%d.dat"
 const dataFileNameMatchPattern string = "dataFile.*.dat"
 const compationFileName string = "compactionFile.dat"
 
-// BHashTable for
+// BHashTable interface for bitcask hash table. it's used to find the location of
+// the record in current version in wal file on disk, and to support the read
+// request with only one disk seek and one disk read per request
 type BHashTable interface {
 	Get(key string) (h HashItem, err error)
 	Set(key string, h HashItem) error
@@ -29,7 +31,11 @@ type BHashTable interface {
 	}
 }
 
-// WALFile for
+// WALFile interface for bitcask wal file. It's used to contain the record
+// on the disk to support durability and large writing throughput by appending
+// new value to the end of itself without modifing the old value. when it gets
+// large enough, it becomes read-only and records will be written to a
+// new wal file (which is called the active one).
 type WALFile interface {
 	RenameFile(name string) error
 	RemoveFile() error
@@ -44,14 +50,17 @@ type WALFile interface {
 	}
 }
 
-// BitcaskInstance for
-type BitcaskInstance struct {
+// BitcaskInstance struct of a bitcask instance. bitcask consist of many instances where
+// only one instance is the active instance (allow reading and writing both) and others
+// are record archive where not active (allow reading only)
+type bitcaskInstance struct {
 	hashTable BHashTable
 	walFile   WALFile
 }
 
-// LoadData for
-func (b *BitcaskInstance) LoadData() error {
+// loadData construct a BitcaskInstance struct by reading a wal file on disk when system
+// starting up. return nil if success
+func (b *bitcaskInstance) loadData() error {
 	for re := range b.walFile.IteratorRecord() {
 		offset, r := re.offset, re.r
 
@@ -70,8 +79,9 @@ func (b *BitcaskInstance) LoadData() error {
 	return nil
 }
 
-// MergeHash for
-func (b *BitcaskInstance) MergeHash(ins *BitcaskInstance) error {
+// mergeHash merge hash tables of two BitcaskInstance by discarding entries of obsoletely record
+// if success return the new instance and nil
+func (b *bitcaskInstance) mergeHash(ins *bitcaskInstance) error {
 	var err error
 	for item := range ins.hashTable.IteratorItem() {
 		if !b.hashTable.Exists(item.key) {
@@ -99,8 +109,9 @@ func (b *BitcaskInstance) MergeHash(ins *BitcaskInstance) error {
 	return nil
 }
 
-// DumpHashToFile for
-func (b *BitcaskInstance) DumpHashToFile() error {
+// dumpHashToFile dump all record referenced by hashTable to wal file
+// if success return the new instance and nil
+func (b *bitcaskInstance) dumpHashToFile() error {
 	var record Record
 	for item := range b.hashTable.IteratorItem() {
 		err := item.value.Wal.ReadRecord(item.value.Offset, item.value.Len, &record)
@@ -127,8 +138,10 @@ func (b *BitcaskInstance) DumpHashToFile() error {
 	return nil
 }
 
-// CreateBitcaskInstance for
-func CreateBitcaskInstance(name string) (*BitcaskInstance, error) {
+// CreateBitcaskInstance create a new BitcaskInstance by the name of the wal file
+// if success return the new instance and nil
+// if failed, return nil and error
+func createBitcaskInstance(name string) (*bitcaskInstance, error) {
 	hashTable := CreateSimpleHashTable()
 	if hashTable == nil {
 		log.Fatal("create hash table fail, system memory maybe insufficient")
@@ -141,10 +154,10 @@ func CreateBitcaskInstance(name string) (*BitcaskInstance, error) {
 		return nil, beancaskError.ErrorSystemInternal
 	}
 
-	return &BitcaskInstance{hashTable, walFile}, nil
+	return &bitcaskInstance{hashTable, walFile}, nil
 }
 
-// Bitcask for
+// Bitcask the bitcask storage struct
 type Bitcask struct {
 	wchan chan struct {
 		key    string
@@ -153,18 +166,18 @@ type Bitcask struct {
 	}
 	mutex          *sync.RWMutex
 	compacting     int32
-	activeInstance *BitcaskInstance
-	instances      []*BitcaskInstance
+	activeInstance *bitcaskInstance
+	instances      []*bitcaskInstance
 }
 
-// NewBitcask for
+// NewBitcask create a new Bitcask struct
 func NewBitcask() *Bitcask {
 	b := Bitcask{
 		mutex:          new(sync.RWMutex),
 		compacting:     0,
 		activeInstance: nil,
 	}
-	b.LoadData()
+	b.loadData()
 
 	b.wchan = make(chan struct {
 		key    string
@@ -172,23 +185,24 @@ func NewBitcask() *Bitcask {
 		result chan error
 	}, 1024)
 
-	go b.RealSet()
+	go b.realSet()
 
 	return &b
 }
 
-// LoadData for
-func (b *Bitcask) LoadData() error {
+// LoadData load all the data on disk and construct the Bitcask struct
+// if success return nil
+func (b *Bitcask) loadData() error {
 	var err error
 
 	// load active wal file
-	b.activeInstance, err = CreateBitcaskInstance(activeFileName)
+	b.activeInstance, err = createBitcaskInstance(activeFileName)
 	if err != nil {
 		log.Fatal("create active instance fail, system maybe disfunctioning")
 		return nil
 	}
 
-	err = b.activeInstance.LoadData()
+	err = b.activeInstance.loadData()
 	if err != nil {
 		log.Fatalln("load active instance fail, system maybe disfunctioning")
 		return nil
@@ -206,12 +220,12 @@ func (b *Bitcask) LoadData() error {
 	}
 
 	for _, name := range dataFileName {
-		ins, err := CreateBitcaskInstance(name)
+		ins, err := createBitcaskInstance(name)
 		if err != nil {
 			log.Fatal("create data instance fail, system maybe disfunctioning")
 			return nil
 		}
-		err = ins.LoadData()
+		err = ins.loadData()
 		if err != nil {
 			log.Fatal("create data instance fail, system maybe disfunctioning")
 			return nil
@@ -222,7 +236,9 @@ func (b *Bitcask) LoadData() error {
 	return nil
 }
 
-// Get for
+// Get get the value of key
+// if success return nil
+// if data not exists, return beancask.errors.ErrorDataNotFound
 func (b *Bitcask) Get(key string) (string, error) {
 	b.mutex.RLock()
 	defer func() { b.mutex.RUnlock() }()
@@ -252,7 +268,8 @@ func (b *Bitcask) Get(key string) (string, error) {
 	return "", beancaskError.ErrorDataNotFound
 }
 
-// Set for
+// Set the value of key
+// if success return nil
 func (b *Bitcask) Set(key string, value string) error {
 	r := Record{
 		Crc:     crc32.Checksum([]byte(value), crc32.MakeTable(crc32.Castagnoli)),
@@ -278,8 +295,7 @@ func (b *Bitcask) Set(key string, value string) error {
 	return <-resultChan
 }
 
-// RealSet for
-func (b *Bitcask) RealSet() {
+func (b *Bitcask) realSet() {
 	ticker := time.NewTicker(5 * time.Millisecond)
 	var itemQ []struct {
 		key    string
@@ -321,13 +337,13 @@ func (b *Bitcask) RealSet() {
 
 						if int(offset)+len > 128*1024 {
 							b.activeInstance.walFile.Sync()
-							err = b.RotateInstance()
+							err = b.rotateInstance()
 							if err != nil {
 								log.Fatal("rotate instance fail, disk may be disfunctioning!")
 								errorQ = append(errorQ, beancaskError.ErrorSystemInternal)
 								continue
 							}
-							go b.Compact()
+							go b.compact()
 						}
 
 						errorQ = append(errorQ, nil)
@@ -339,8 +355,7 @@ func (b *Bitcask) RealSet() {
 	}
 }
 
-// RotateInstance for
-func (b *Bitcask) RotateInstance() error {
+func (b *Bitcask) rotateInstance() error {
 	newDataFileName := fmt.Sprintf(dataFileNamePattern, len(b.instances))
 	err := b.activeInstance.walFile.RenameFile(newDataFileName)
 	if err != nil {
@@ -355,7 +370,7 @@ func (b *Bitcask) RotateInstance() error {
 	}
 
 	b.instances = append(b.instances, b.activeInstance)
-	b.activeInstance, err = CreateBitcaskInstance(activeFileName)
+	b.activeInstance, err = createBitcaskInstance(activeFileName)
 	if err != nil {
 		log.Fatal("create active instance fail, system maybe disfunctioning")
 		return nil
@@ -364,8 +379,7 @@ func (b *Bitcask) RotateInstance() error {
 	return nil
 }
 
-// Compact for
-func (b *Bitcask) Compact() error {
+func (b *Bitcask) compact() error {
 	ndataFile := len(b.instances)
 	if ndataFile <= 1 {
 		return nil
@@ -378,20 +392,20 @@ func (b *Bitcask) Compact() error {
 	}
 	defer func() { atomic.CompareAndSwapInt32(&b.compacting, 1, 0) }()
 
-	ins, err := CreateBitcaskInstance(compationFileName)
+	ins, err := createBitcaskInstance(compationFileName)
 	if err != nil {
 		log.Fatal("create compation instance fail, system maybe disfunctioning")
 		return nil
 	}
 
 	for i := ndataFile - 1; i >= 0; i-- {
-		err = ins.MergeHash(b.instances[i])
+		err = ins.mergeHash(b.instances[i])
 		if err != nil {
 			log.Fatal("compact instance fail, system maybe disfunctioning")
 			return nil
 		}
 	}
-	err = ins.DumpHashToFile()
+	err = ins.dumpHashToFile()
 	if err != nil {
 		log.Fatalf("dump instance hash to file file fail:%s\n", err.Error())
 		return nil
@@ -410,7 +424,7 @@ func (b *Bitcask) Compact() error {
 			b.instances[i].walFile.RemoveFile()
 		}
 
-		var newDataFiles []*BitcaskInstance
+		var newDataFiles []*bitcaskInstance
 		ins.walFile.RenameFile(fmt.Sprintf(dataFileNamePattern, 0))
 		newDataFiles = append(newDataFiles, ins)
 		for i := ndataFile; i < len(b.instances); i++ {
@@ -424,8 +438,7 @@ func (b *Bitcask) Compact() error {
 	return nil
 }
 
-// WaitAllForCloseAndExec for
-func (b *Bitcask) WaitAllForCloseAndExec(f func()) {
+func (b *Bitcask) waitAllForCloseAndExec(f func()) {
 	// ensure compacting is done
 	swaped := false
 	for !swaped {
@@ -440,9 +453,9 @@ func (b *Bitcask) WaitAllForCloseAndExec(f func()) {
 	f()
 }
 
-// Destory for
+// Destory destory the bitcask storage, with data on disk
 func (b *Bitcask) Destory() {
-	b.WaitAllForCloseAndExec(func() {
+	b.waitAllForCloseAndExec(func() {
 		b.activeInstance.walFile.RemoveFile()
 		for _, ins := range b.instances {
 			ins.walFile.RemoveFile()
@@ -450,9 +463,9 @@ func (b *Bitcask) Destory() {
 	})
 }
 
-// Close for
+// Close close the bitcask storage, with data on disk remain
 func (b *Bitcask) Close() {
-	b.WaitAllForCloseAndExec(func() {
+	b.waitAllForCloseAndExec(func() {
 		b.activeInstance.walFile.CloseFile(false)
 		for _, ins := range b.instances {
 			ins.walFile.CloseFile(false)

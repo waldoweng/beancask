@@ -11,7 +11,7 @@ import (
 	beancaskError "github.com/waldoweng/beancask/errors"
 )
 
-// Record for
+// Record struct of record of the bitcask wal file
 type Record struct {
 	Crc     uint32
 	Tmstamp int64
@@ -56,7 +56,8 @@ func (r *Record) size() int64 {
 	return 28 + r.Ksz + r.ValSz
 }
 
-// BitCaskLogFile for
+// BitCaskLogFile struct of the BitcaskLogFile
+// implementation of WALFile interface
 type BitCaskLogFile struct {
 	FileName    string
 	FileHandle  *os.File
@@ -64,7 +65,7 @@ type BitCaskLogFile struct {
 	mutex       *sync.RWMutex
 }
 
-// CreateBitcaskLogFile for
+// CreateBitcaskLogFile create a new BitcaskLogFile struct
 func CreateBitcaskLogFile(filename string) *BitCaskLogFile {
 
 	fileHandle, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -87,7 +88,8 @@ func CreateBitcaskLogFile(filename string) *BitCaskLogFile {
 	}
 }
 
-// ReadRecord for
+// ReadRecord read a record from wal file offset and [len] bytes
+// return nil if success
 func (b *BitCaskLogFile) ReadRecord(offset int64, len int, r *Record) error {
 	buf := make([]byte, len)
 	n, err := b.FileHandleR.ReadAt(buf, offset)
@@ -105,7 +107,9 @@ func (b *BitCaskLogFile) ReadRecord(offset int64, len int, r *Record) error {
 	return err
 }
 
-// AppendRecord for
+// AppendRecord append a record to wal file
+// return record offset and len
+// return nil for error if success
 func (b *BitCaskLogFile) AppendRecord(r Record, sync bool) (int64, int, error) {
 	offset, _ := b.FileHandle.Seek(0, os.SEEK_CUR)
 	var buf bytes.Buffer
@@ -138,7 +142,7 @@ func (b *BitCaskLogFile) AppendRecord(r Record, sync bool) (int64, int, error) {
 	return offset, blen, nil
 }
 
-// IteratorRecord for
+// IteratorRecord return a channel of record for iterating
 func (b *BitCaskLogFile) IteratorRecord() <-chan struct {
 	offset int
 	r      Record
@@ -183,7 +187,8 @@ func (b *BitCaskLogFile) IteratorRecord() <-chan struct {
 	return chnl
 }
 
-// RenameFile for
+// RenameFile rename the wal file on disk
+// return nil if success
 func (b *BitCaskLogFile) RenameFile(name string) error {
 	err := os.Rename(b.FileName, name)
 	if err != nil {
@@ -194,13 +199,15 @@ func (b *BitCaskLogFile) RenameFile(name string) error {
 	return nil
 }
 
-// RemoveFile for
+// RemoveFile remove the wal file on disk
+// return nil if success
 func (b *BitCaskLogFile) RemoveFile() error {
 	b.CloseFile(true)
 	return nil
 }
 
-// CloseFile for
+// CloseFile close the file handle of the wal file on disk
+// return nil if success
 func (b *BitCaskLogFile) CloseFile(remove bool) error {
 	if b.FileHandle != nil {
 		b.FileHandle.Close()
@@ -219,7 +226,8 @@ func (b *BitCaskLogFile) CloseFile(remove bool) error {
 	return nil
 }
 
-// Deactivate for
+// Deactivate deactivate the BitcaskLogFile by closing the write handle of the wal file if it's open
+// return nil if success
 func (b *BitCaskLogFile) Deactivate() error {
 	if b.FileHandle != nil {
 		b.FileHandle.Close()
@@ -228,7 +236,7 @@ func (b *BitCaskLogFile) Deactivate() error {
 	return nil
 }
 
-// Sync for
+// Sync flush all data to disk
 func (b *BitCaskLogFile) Sync() error {
 	return b.FileHandle.Sync()
 }
