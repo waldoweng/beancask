@@ -1,6 +1,9 @@
 package storage
 
-import "errors"
+import (
+	"errors"
+	"sync"
+)
 
 // HashItem for
 type HashItem struct {
@@ -12,33 +15,31 @@ type HashItem struct {
 
 // CreateSimpleHashTable for
 func CreateSimpleHashTable() *SimpleHashTable {
-	return &SimpleHashTable{
-		hash: make(map[string]HashItem),
-	}
+	return &SimpleHashTable{}
 }
 
 // SimpleHashTable for
 type SimpleHashTable struct {
-	hash map[string]HashItem
+	hash sync.Map
 }
 
 // Get for
 func (s *SimpleHashTable) Get(key string) (h HashItem, err error) {
-	if h, ok := s.hash[key]; ok {
-		return h, nil
+	if h, ok := s.hash.Load(key); ok {
+		return h.(interface{}).(HashItem), nil
 	}
 	return HashItem{}, errors.New("no found")
 }
 
 // Set for
 func (s *SimpleHashTable) Set(key string, h HashItem) error {
-	s.hash[key] = h
+	s.hash.Store(key, h)
 	return nil
 }
 
 // Exists for
 func (s *SimpleHashTable) Exists(key string) (exists bool) {
-	_, ok := s.hash[key]
+	_, ok := s.hash.Load(key)
 	return ok
 }
 
@@ -52,12 +53,16 @@ func (s *SimpleHashTable) IteratorItem() <-chan struct {
 		value HashItem
 	})
 	go func() {
-		for k, v := range s.hash {
+		s.hash.Range(func(k interface{}, v interface{}) bool {
 			chnl <- struct {
 				key   string
 				value HashItem
-			}{k, v}
-		}
+			}{
+				k.(interface{}).(string),
+				v.(interface{}).(HashItem),
+			}
+			return true
+		})
 
 		// Ensure that at the end of the loop we close the channel!
 		close(chnl)

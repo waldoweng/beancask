@@ -2,6 +2,7 @@ package storage
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 	"os"
 	"testing"
@@ -57,22 +58,22 @@ func TestAllSet(t *testing.T) {
 func TestAllGet(t *testing.T) {
 	localMap := make(map[string]string)
 	for i := 0; i < 10000; i++ {
-		key := fmt.Sprintf("benchmark all read key %d", rand.Intn(1000000))
-		value := fmt.Sprintf("benchmark all read value %d", rand.Intn(1000000))
+		key := fmt.Sprintf("test all read key %d", rand.Intn(1000))
+		value := fmt.Sprintf("test all read value %d", rand.Intn(1000000000))
 		localMap[key] = value
 		err := b.Set(key, value)
 		if err != nil {
-			t.Errorf("BenchmarkAllRead prepare data %d fail\n", i)
+			t.Errorf("TestAllGet prepare data %d fail\n", i)
 		}
 	}
 
 	for k, v := range localMap {
 		value, err := b.Get(k)
 		if err != nil {
-			t.Errorf("BenchmarkAllRead read key[%s] fail[%s]\n", k, err.Error())
+			t.Errorf("TestAllGet read key[%s] fail[%s]\n", k, err.Error())
 		}
 		if value != v {
-			t.Errorf("BenchmarkAllRead read key[%s] got[%s] want[%s]\n", k, value, v)
+			t.Errorf("TestAllGet read key[%s] got[%s] want[%s]\n", k, value, v)
 		}
 	}
 }
@@ -145,6 +146,7 @@ func BenchmarkConcurrentWrite(benchmark *testing.B) {
 }
 
 func TestMain(m *testing.M) {
+	log.SetFlags(log.Ltime | log.Lshortfile)
 	b = NewBitcask()
 	result := m.Run()
 	b.Destory()

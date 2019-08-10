@@ -69,31 +69,60 @@ func (b *BitcaskInstance) LoadData() error {
 	return nil
 }
 
-// Compact for
-func (b *BitcaskInstance) Compact(ins *BitcaskInstance) error {
-	for kv := range ins.hashTable.IteratorItem() {
-		k, v := kv.key, kv.value
+// MergeHash for
+func (b *BitcaskInstance) MergeHash(ins *BitcaskInstance) error {
+	var err error
+	for item := range ins.hashTable.IteratorItem() {
+		if !b.hashTable.Exists(item.key) {
+			err = b.hashTable.Set(item.key, item.value)
+			if err != nil {
+				log.Fatalf("set hash table fail err:%s\n", err.Error())
+				return err
+			}
+		} else {
+			value, err := b.hashTable.Get(item.key)
+			if err != nil {
+				log.Fatalf("get hash table fail err:%s\n", err.Error())
+				return err
+			}
 
-		var r Record
-		err := ins.walFile.ReadRecord(v.Offset, v.Len, &r)
-		if err != nil {
-			log.Fatalf("read wal file fail, system memory maybe insufficient")
-			return beancaskError.ErrorSystemInternal
-		}
-
-		v.Offset, v.Len, err = b.walFile.AppendRecord(r, false)
-		if err != nil {
-			log.Fatalf("write wal file fail, system memory maybe insufficient")
-			return beancaskError.ErrorSystemInternal
-		}
-
-		v.Wal = b.walFile
-		err = b.hashTable.Set(k, v)
-		if err != nil {
-			log.Fatalf("set hash table fail, system memory maybe insufficient")
-			return beancaskError.ErrorSystemInternal
+			if value.Tmstamp < item.value.Tmstamp {
+				err = b.hashTable.Set(item.key, item.value)
+				if err != nil {
+					log.Fatalf("set hash table err:%s\n", err.Error())
+					return err
+				}
+			}
 		}
 	}
+	return nil
+}
+
+// DumpHashToFile for
+func (b *BitcaskInstance) DumpHashToFile() error {
+	var record Record
+	for item := range b.hashTable.IteratorItem() {
+		err := item.value.Wal.ReadRecord(item.value.Offset, item.value.Len, &record)
+		if err != nil {
+			log.Fatalf("read record fail %s\n", err.Error())
+			return err
+		}
+
+		offset, len, err := b.walFile.AppendRecord(record, false)
+		if err != nil {
+			log.Fatalf("write record fail %s\n", err.Error())
+			return err
+		}
+
+		item.value.Wal, item.value.Offset, item.value.Len = b.walFile, offset, len
+		err = b.hashTable.Set(item.key, item.value)
+		if err != nil {
+			log.Fatalf("update hash fail %s\n", err.Error())
+			return err
+		}
+	}
+
+	b.walFile.Sync()
 	return nil
 }
 
@@ -207,10 +236,10 @@ func (b *Bitcask) Get(key string) (string, error) {
 		return string(r.Value[:]), nil
 	}
 
-	for _, ins := range b.instances {
-		if item, err := ins.hashTable.Get(key); err == nil {
+	for i := len(b.instances) - 1; i >= 0; i-- {
+		if item, err := b.instances[i].hashTable.Get(key); err == nil {
 			var r Record
-			err = ins.walFile.ReadRecord(item.Offset, item.Len, &r)
+			err = b.instances[i].walFile.ReadRecord(item.Offset, item.Len, &r)
 			if err != nil {
 				log.Fatal("read key [", key, "] from active file fail, data may be corrupted!")
 				return "", beancaskError.ErrorSystemInternal
@@ -354,12 +383,17 @@ func (b *Bitcask) Compact() error {
 		return nil
 	}
 
-	for _, curIns := range b.instances[:ndataFile] {
-		err = ins.Compact(curIns)
+	for i := ndataFile - 1; i >= 0; i-- {
+		err = ins.MergeHash(b.instances[i])
 		if err != nil {
 			log.Fatal("compact instance fail, system maybe disfunctioning")
 			return nil
 		}
+	}
+	err = ins.DumpHashToFile()
+	if err != nil {
+		log.Fatalf("dump instance hash to file file fail:%s\n", err.Error())
+		return nil
 	}
 	err = ins.walFile.Deactivate()
 	if err != nil {
