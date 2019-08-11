@@ -5,6 +5,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"sync"
 	"testing"
 
 	beancaskError "github.com/waldoweng/beancask/errors"
@@ -57,15 +58,40 @@ func TestBitcask_AllSet(t *testing.T) {
 
 func TestBitcask_AllGet(t *testing.T) {
 	localMap := make(map[string]string)
+	var localQueue []struct {
+		key   string
+		value string
+	}
 	for i := 0; i < 10000; i++ {
 		key := fmt.Sprintf("test all read key %d", rand.Intn(1000))
 		value := fmt.Sprintf("test all read value %d", rand.Intn(1000000000))
 		localMap[key] = value
-		err := b.Set(key, value)
-		if err != nil {
-			t.Errorf("TestAllGet prepare data %d fail\n", i)
-		}
+		localQueue = append(localQueue, struct {
+			key   string
+			value string
+		}{
+			key:   key,
+			value: value,
+		})
 	}
+
+	var wg sync.WaitGroup
+	var concurrency int
+	for i := 0; i < len(localQueue); i++ {
+		if concurrency%20 == 0 {
+			wg.Wait()
+		}
+
+		concurrency++
+		key := localQueue[i].key
+		value := localQueue[i].value
+		go func() {
+			b.Set(key, value)
+			wg.Done()
+		}()
+		wg.Add(1)
+	}
+	wg.Wait()
 
 	for k, v := range localMap {
 		value, err := b.Get(k)

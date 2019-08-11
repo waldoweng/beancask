@@ -296,7 +296,7 @@ func (b *Bitcask) Set(key string, value string) error {
 }
 
 func (b *Bitcask) realSet() {
-	ticker := time.NewTicker(5 * time.Millisecond)
+	timer := time.NewTimer(5 * time.Millisecond)
 	var itemQ []struct {
 		key    string
 		record Record
@@ -307,7 +307,7 @@ func (b *Bitcask) realSet() {
 		select {
 		case witem := <-b.wchan:
 			itemQ = append(itemQ, witem)
-		case <-ticker.C:
+		case <-timer.C:
 			if len(itemQ) != 0 {
 				func() {
 					b.mutex.Lock()
@@ -320,6 +320,7 @@ func (b *Bitcask) realSet() {
 						b.mutex.Unlock()
 					}()
 
+					var needCompact bool
 					for _, witem := range itemQ {
 						offset, len, err := b.activeInstance.walFile.AppendRecord(witem.record, false)
 						if err != nil {
@@ -343,14 +344,23 @@ func (b *Bitcask) realSet() {
 								errorQ = append(errorQ, beancaskError.ErrorSystemInternal)
 								continue
 							}
-							go b.compact()
+							needCompact = true
 						}
 
 						errorQ = append(errorQ, nil)
 						continue
 					}
+
+					if needCompact {
+						needCompact = false
+						ndataFile := len(b.instances)
+						if ndataFile > 1 {
+							go b.compact(ndataFile)
+						}
+					}
 				}()
 			}
+			timer = time.NewTimer(5 * time.Millisecond)
 		}
 	}
 }
@@ -379,12 +389,7 @@ func (b *Bitcask) rotateInstance() error {
 	return nil
 }
 
-func (b *Bitcask) compact() error {
-	ndataFile := len(b.instances)
-	if ndataFile <= 1 {
-		return nil
-	}
-
+func (b *Bitcask) compact(ndataFile int) error {
 	// ensure only one go-routine is compacting
 	swaped := atomic.CompareAndSwapInt32(&b.compacting, 0, 1)
 	if !swaped {
@@ -443,6 +448,7 @@ func (b *Bitcask) waitAllForCloseAndExec(f func()) {
 	swaped := false
 	for !swaped {
 		swaped = atomic.CompareAndSwapInt32(&b.compacting, 0, 1)
+		time.Sleep(time.Microsecond * 7)
 	}
 	b.mutex.Lock()
 	defer func() {
