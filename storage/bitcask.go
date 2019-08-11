@@ -306,13 +306,11 @@ func (b *Bitcask) Delete(key string) error {
 
 	err := func() error {
 		b.mutex.Lock()
-		log.Println("mutex locked")
-		defer func() { b.mutex.Unlock(); log.Println("mutex unlock") }()
+		defer func() { b.mutex.Unlock() }()
 
 		if !b.exists(key) {
 			return beancaskError.ErrorDataNotFound
 		}
-		log.Println("afte exists")
 
 		r := CreateTomStoneRecord(key)
 		b.wchan <- struct {
@@ -324,7 +322,6 @@ func (b *Bitcask) Delete(key string) error {
 			record: r,
 			result: resultChan,
 		}
-		log.Println("afte send chan")
 		return nil
 	}()
 
