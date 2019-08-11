@@ -5,14 +5,6 @@ import (
 	"sync"
 )
 
-// HashItem struct of hash table entry
-type HashItem struct {
-	Wal     WALFile
-	Len     int
-	Offset  int64
-	Tmstamp int64
-}
-
 // CreateSimpleHashTable create a new hash table
 func CreateSimpleHashTable() *SimpleHashTable {
 	return &SimpleHashTable{}

@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"hash/crc32"
 	"log"
@@ -18,6 +20,14 @@ const dataFileNamePattern string = "dataFile.%d.dat"
 const dataFileNameMatchPattern string = "dataFile.*.dat"
 const compationFileName string = "compactionFile.dat"
 
+// HashItem struct of hash table entry
+type HashItem struct {
+	Wal     WALFile
+	Len     int
+	Offset  int64
+	Tmstamp int64
+}
+
 // BHashTable interface for bitcask hash table. it's used to find the location of
 // the record in current version in wal file on disk, and to support the read
 // request with only one disk seek and one disk read per request
@@ -30,6 +40,67 @@ type BHashTable interface {
 		key   string
 		value HashItem
 	}
+}
+
+// Record struct of record of the bitcask wal file
+type Record struct {
+	Crc     uint32
+	Tmstamp int64
+	Ksz     int64
+	ValSz   int64
+	Key     []byte
+	Value   []byte
+}
+
+// CreateTomStoneRecord create a tomb stone record for key
+func CreateTomStoneRecord(key string) Record {
+	return Record{
+		Crc:     0,
+		Tmstamp: time.Now().UnixNano(),
+		Ksz:     int64(len(key)),
+		ValSz:   0,
+		Key:     []byte(key),
+		Value:   []byte(""),
+	}
+}
+
+func (r *Record) fromBuffer(buf *bytes.Buffer) error {
+	err := binary.Read(buf, binary.LittleEndian, &r.Crc)
+	err = binary.Read(buf, binary.LittleEndian, &r.Tmstamp)
+	err = binary.Read(buf, binary.LittleEndian, &r.Ksz)
+	err = binary.Read(buf, binary.LittleEndian, &r.ValSz)
+
+	r.Key = make([]byte, r.Ksz)
+	r.Value = make([]byte, r.ValSz)
+	err = binary.Read(buf, binary.LittleEndian, &r.Key)
+	err = binary.Read(buf, binary.LittleEndian, &r.Value)
+
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *Record) toBuffer(buf *bytes.Buffer) error {
+	err := binary.Write(buf, binary.LittleEndian, r.Crc)
+	err = binary.Write(buf, binary.LittleEndian, r.Tmstamp)
+	err = binary.Write(buf, binary.LittleEndian, r.Ksz)
+	err = binary.Write(buf, binary.LittleEndian, r.ValSz)
+	err = binary.Write(buf, binary.LittleEndian, r.Key[0:r.Ksz])
+	err = binary.Write(buf, binary.LittleEndian, r.Value[0:r.ValSz])
+
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *Record) size() int64 {
+	return 28 + r.Ksz + r.ValSz
+}
+
+func (r *Record) isTomeStone() bool {
+	return r.ValSz == 0
 }
 
 // WALFile interface for bitcask wal file. It's used to contain the record

@@ -2,76 +2,13 @@ package storage
 
 import (
 	"bytes"
-	"encoding/binary"
 	"io"
 	"log"
 	"os"
 	"sync"
-	"time"
 
 	beancaskError "github.com/waldoweng/beancask/errors"
 )
-
-// Record struct of record of the bitcask wal file
-type Record struct {
-	Crc     uint32
-	Tmstamp int64
-	Ksz     int64
-	ValSz   int64
-	Key     []byte
-	Value   []byte
-}
-
-// CreateTomStoneRecord create a tomb stone record for key
-func CreateTomStoneRecord(key string) Record {
-	return Record{
-		Crc:     0,
-		Tmstamp: time.Now().UnixNano(),
-		Ksz:     int64(len(key)),
-		ValSz:   0,
-		Key:     []byte(key),
-		Value:   []byte(""),
-	}
-}
-
-func (r *Record) fromBuffer(buf *bytes.Buffer) error {
-	err := binary.Read(buf, binary.LittleEndian, &r.Crc)
-	err = binary.Read(buf, binary.LittleEndian, &r.Tmstamp)
-	err = binary.Read(buf, binary.LittleEndian, &r.Ksz)
-	err = binary.Read(buf, binary.LittleEndian, &r.ValSz)
-
-	r.Key = make([]byte, r.Ksz)
-	r.Value = make([]byte, r.ValSz)
-	err = binary.Read(buf, binary.LittleEndian, &r.Key)
-	err = binary.Read(buf, binary.LittleEndian, &r.Value)
-
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (r *Record) toBuffer(buf *bytes.Buffer) error {
-	err := binary.Write(buf, binary.LittleEndian, r.Crc)
-	err = binary.Write(buf, binary.LittleEndian, r.Tmstamp)
-	err = binary.Write(buf, binary.LittleEndian, r.Ksz)
-	err = binary.Write(buf, binary.LittleEndian, r.ValSz)
-	err = binary.Write(buf, binary.LittleEndian, r.Key[0:r.Ksz])
-	err = binary.Write(buf, binary.LittleEndian, r.Value[0:r.ValSz])
-
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (r *Record) size() int64 {
-	return 28 + r.Ksz + r.ValSz
-}
-
-func (r *Record) isTomeStone() bool {
-	return r.ValSz == 0
-}
 
 // BitCaskLogFile struct of the BitcaskLogFile
 // implementation of WALFile interface
