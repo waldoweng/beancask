@@ -85,6 +85,10 @@ func TestBitcask_AllGet(t *testing.T) {
 		concurrency++
 		key := localQueue[i].key
 		value := localQueue[i].value
+		if localMap[key] != value {
+			continue
+		}
+
 		go func() {
 			b.Set(key, value)
 			wg.Done()
