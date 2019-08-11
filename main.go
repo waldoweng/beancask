@@ -65,6 +65,16 @@ func (u *Wsgi) set(request *restful.Request, response *restful.Response) {
 	}
 }
 
+func (u *Wsgi) del(request *restful.Request, response *restful.Response) {
+	key := request.PathParameter("key")
+	err := u.bitcask.Delete(key)
+	if err != nil {
+		response.WriteErrorString(http.StatusNotFound, err.Error())
+	} else {
+		response.WriteErrorString(http.StatusOK, "ok")
+	}
+}
+
 func main() {
 	u := Wsgi{
 		bitcask: storage.NewBitcask(),

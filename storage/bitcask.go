@@ -24,6 +24,7 @@ const compationFileName string = "compactionFile.dat"
 type BHashTable interface {
 	Get(key string) (h HashItem, err error)
 	Set(key string, h HashItem) error
+	Del(key string) error
 	Exists(key string) (exists bool)
 	IteratorItem() <-chan struct {
 		key   string
@@ -63,7 +64,9 @@ type bitcaskInstance struct {
 func (b *bitcaskInstance) loadData() error {
 	for re := range b.walFile.IteratorRecord() {
 		offset, r := re.offset, re.r
-
+		if r.isTomeStone() {
+			continue
+		}
 		h := HashItem{
 			Wal:     b.walFile,
 			Len:     int(r.size()),
@@ -295,6 +298,57 @@ func (b *Bitcask) Set(key string, value string) error {
 	return <-resultChan
 }
 
+// Delete the value of key
+// if success return nil
+func (b *Bitcask) Delete(key string) error {
+	resultChan := make(chan error, 1)
+	defer func() { close(resultChan) }()
+
+	err := func() error {
+		b.mutex.Lock()
+		log.Println("mutex locked")
+		defer func() { b.mutex.Unlock(); log.Println("mutex unlock") }()
+
+		if !b.exists(key) {
+			return beancaskError.ErrorDataNotFound
+		}
+		log.Println("afte exists")
+
+		r := CreateTomStoneRecord(key)
+		b.wchan <- struct {
+			key    string
+			record Record
+			result chan error
+		}{
+			key:    key,
+			record: r,
+			result: resultChan,
+		}
+		log.Println("afte send chan")
+		return nil
+	}()
+
+	if err != nil {
+		return err
+	}
+
+	return <-resultChan
+}
+
+func (b *Bitcask) exists(key string) bool {
+	if b.activeInstance.hashTable.Exists(key) {
+		return true
+	}
+
+	for i := len(b.instances) - 1; i >= 0; i-- {
+		if b.instances[i].hashTable.Exists(key) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (b *Bitcask) realSet() {
 	timer := time.NewTimer(5 * time.Millisecond)
 	var itemQ []struct {
@@ -329,12 +383,16 @@ func (b *Bitcask) realSet() {
 							continue
 						}
 
-						b.activeInstance.hashTable.Set(witem.key, HashItem{
-							Wal:     b.activeInstance.walFile,
-							Len:     len,
-							Offset:  offset,
-							Tmstamp: time.Now().UnixNano(),
-						})
+						if witem.record.isTomeStone() {
+							b.activeInstance.hashTable.Del(witem.key)
+						} else {
+							b.activeInstance.hashTable.Set(witem.key, HashItem{
+								Wal:     b.activeInstance.walFile,
+								Len:     len,
+								Offset:  offset,
+								Tmstamp: time.Now().UnixNano(),
+							})
+						}
 
 						if int(offset)+len > 128*1024 {
 							b.activeInstance.walFile.Sync()
@@ -421,7 +479,7 @@ func (b *Bitcask) compact(ndataFile int) error {
 		return nil
 	}
 
-	{
+	func() {
 		b.mutex.Lock()
 		defer func() { b.mutex.Unlock() }()
 
@@ -438,7 +496,7 @@ func (b *Bitcask) compact(ndataFile int) error {
 		}
 
 		b.instances = newDataFiles
-	}
+	}()
 
 	return nil
 }

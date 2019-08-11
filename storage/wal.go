@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"time"
 
 	beancaskError "github.com/waldoweng/beancask/errors"
 )
@@ -19,6 +20,18 @@ type Record struct {
 	ValSz   int64
 	Key     []byte
 	Value   []byte
+}
+
+// CreateTomStoneRecord create a tomb stone record for key
+func CreateTomStoneRecord(key string) Record {
+	return Record{
+		Crc:     0,
+		Tmstamp: time.Now().UnixNano(),
+		Ksz:     int64(len(key)),
+		ValSz:   0,
+		Key:     []byte(key),
+		Value:   []byte(""),
+	}
 }
 
 func (r *Record) fromBuffer(buf *bytes.Buffer) error {
@@ -54,6 +67,10 @@ func (r *Record) toBuffer(buf *bytes.Buffer) error {
 
 func (r *Record) size() int64 {
 	return 28 + r.Ksz + r.ValSz
+}
+
+func (r *Record) isTomeStone() bool {
+	return r.ValSz == 0
 }
 
 // BitCaskLogFile struct of the BitcaskLogFile

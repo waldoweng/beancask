@@ -13,21 +13,55 @@ import (
 
 var b *Bitcask
 
-func TestBitcask_SimpleSet(t *testing.T) {
+func TestBitcask_Set(t *testing.T) {
 	err := b.Set("test key", "test value")
 	if err != nil {
-		t.Error("TestSimpleSet fail")
+		t.Error("TestBitcask_Set fail")
 	}
 }
 
-func TestBitcask_EmptyGet(t *testing.T) {
+func TestBitcask_Get(t *testing.T) {
 	value, err := b.Get("test empty value key")
 	if err != beancaskError.ErrorDataNotFound {
-		t.Errorf("TestEmptyGet get value fail err:%s\n", err.Error())
+		t.Errorf("TestBitcask_Get get value fail err:%s\n", err.Error())
 	}
 
 	if value != "" {
-		t.Errorf("TestEmptyGet get value get[%s] want [%s]\n", value, "")
+		t.Errorf("TestBitcask_Get get value get[%s] want [%s]\n", value, "")
+	}
+}
+
+func TestBitcask_Delete(t *testing.T) {
+	testKey := "test delete key"
+	testValue := "test delete value"
+
+	value, err := b.Get(testKey)
+	if err != beancaskError.ErrorDataNotFound {
+		t.Errorf("TestBitcask_Delete get value fail err:%s\n", err.Error())
+	}
+	if value != "" {
+		t.Errorf("TestBitcask_Delete get value get[%s] want [%s]\n", value, "")
+	}
+
+	if err = b.Set(testKey, testValue); err != nil {
+		t.Error("TestBitcask_Delete set value fail")
+	}
+
+	value, err = b.Get(testKey)
+	if err != nil {
+		t.Errorf("TestBitcask_Delete get value fail:[%s]\n", err.Error())
+	}
+	if value != testValue {
+		t.Errorf("TestBitcask_Delete get value got[%s] want[%s]\n", value, testValue)
+	}
+
+	if err = b.Delete(testKey); err != nil {
+		t.Errorf("TestBitcask_Delete delete fail [%s]\n", err.Error())
+	}
+
+	value, err = b.Get(testKey)
+	if err != beancaskError.ErrorDataNotFound {
+		t.Errorf("TestBitcask_Delete get value found\n")
 	}
 }
 

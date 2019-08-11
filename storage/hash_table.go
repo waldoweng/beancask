@@ -37,6 +37,12 @@ func (s *SimpleHashTable) Set(key string, h HashItem) error {
 	return nil
 }
 
+// Del delete value of key to the hash table
+func (s *SimpleHashTable) Del(key string) error {
+	s.hash.Delete(key)
+	return nil
+}
+
 // Exists check whether a key exists on the hash table
 func (s *SimpleHashTable) Exists(key string) (exists bool) {
 	_, ok := s.hash.Load(key)
