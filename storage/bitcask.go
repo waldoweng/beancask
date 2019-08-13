@@ -239,6 +239,8 @@ type Bitcask struct {
 		result chan error
 	}
 	mutex          *sync.RWMutex
+	wg             *sync.WaitGroup
+	exiting        bool
 	compacting     int32
 	activeInstance *bitcaskInstance
 	instances      []*bitcaskInstance
@@ -248,6 +250,7 @@ type Bitcask struct {
 func NewBitcask() *Bitcask {
 	b := Bitcask{
 		mutex:          new(sync.RWMutex),
+		wg:             new(sync.WaitGroup),
 		compacting:     0,
 		activeInstance: nil,
 	}
@@ -259,6 +262,7 @@ func NewBitcask() *Bitcask {
 		result chan error
 	}, 1024)
 
+	b.wg.Add(1)
 	go b.realSet()
 
 	return &b
@@ -442,6 +446,8 @@ func (b *Bitcask) exists(key string) bool {
 }
 
 func (b *Bitcask) realSet() {
+	defer func() { b.wg.Done() }()
+
 	timer := time.NewTimer(5 * time.Millisecond)
 	var itemQ []struct {
 		key    string
@@ -449,14 +455,16 @@ func (b *Bitcask) realSet() {
 		result chan error
 	}
 	var errorQ []error
+	var exiting bool
 	for {
 		select {
 		case witem, ok := <-b.wchan:
 			if !ok {
-				timer.Stop()
-				break
+				b.wchan = nil
+				exiting = true
+			} else {
+				itemQ = append(itemQ, witem)
 			}
-			itemQ = append(itemQ, witem)
 		case <-timer.C:
 			if len(itemQ) != 0 {
 				func() {
@@ -514,6 +522,10 @@ func (b *Bitcask) realSet() {
 					}
 				}()
 			}
+		}
+		if exiting && len(itemQ) == 0 {
+			break
+		} else {
 			timer = time.NewTimer(5 * time.Millisecond)
 		}
 	}
@@ -626,6 +638,8 @@ func (b *Bitcask) Destory() {
 		}
 
 		close(b.wchan)
+		b.exiting = true
+		b.wg.Wait()
 	})
 }
 
@@ -638,5 +652,7 @@ func (b *Bitcask) Close() {
 		}
 
 		close(b.wchan)
+		b.exiting = true
+		b.wg.Wait()
 	})
 }

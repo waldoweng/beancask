@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	beancaskError "github.com/waldoweng/beancask/errors"
@@ -205,11 +206,11 @@ func BenchmarkBitcask_RandomReadWrite(benchmark *testing.B) {
 }
 
 func BenchmarkBitcask_ConcurrentWrite(benchmark *testing.B) {
-	benchmark.SetParallelism(100)
+	benchmark.SetParallelism(20)
 	benchmark.RunParallel(func(pb *testing.PB) {
 		var i int32
 		for pb.Next() {
-			i = i + 1
+			atomic.AddInt32(&i, 1)
 			b.Set(fmt.Sprintf("benchmark concurrent write key %d", i), fmt.Sprintf("benchmark concurrent write value %d", i))
 		}
 	})
