@@ -317,6 +317,10 @@ func (b *Bitcask) Get(key string) (string, error) {
 	b.mutex.RLock()
 	defer func() { b.mutex.RUnlock() }()
 
+	if b.wchan == nil {
+		return "", beancaskError.ErrorSystemShuttingDown
+	}
+
 	if item, err := b.activeInstance.hashTable.Get(key); err == nil {
 		var r Record
 		err = b.activeInstance.walFile.ReadRecord(item.Offset, item.Len, &r)
@@ -356,14 +360,30 @@ func (b *Bitcask) Set(key string, value string) error {
 
 	resultChan := make(chan error, 1)
 	defer func() { close(resultChan) }()
-	b.wchan <- struct {
-		key    string
-		record Record
-		result chan error
-	}{
-		key:    key,
-		record: r,
-		result: resultChan,
+
+	err := func() error {
+		b.mutex.Lock()
+		defer func() { b.mutex.Unlock() }()
+
+		if b.wchan == nil {
+			return beancaskError.ErrorSystemShuttingDown
+		}
+
+		b.wchan <- struct {
+			key    string
+			record Record
+			result chan error
+		}{
+			key:    key,
+			record: r,
+			result: resultChan,
+		}
+
+		return nil
+	}()
+
+	if err != nil {
+		return err
 	}
 
 	return <-resultChan
@@ -378,6 +398,10 @@ func (b *Bitcask) Delete(key string) error {
 	err := func() error {
 		b.mutex.Lock()
 		defer func() { b.mutex.Unlock() }()
+
+		if b.wchan == nil {
+			return beancaskError.ErrorSystemShuttingDown
+		}
 
 		if !b.exists(key) {
 			return beancaskError.ErrorDataNotFound
@@ -427,7 +451,11 @@ func (b *Bitcask) realSet() {
 	var errorQ []error
 	for {
 		select {
-		case witem := <-b.wchan:
+		case witem, ok := <-b.wchan:
+			if !ok {
+				timer.Stop()
+				break
+			}
 			itemQ = append(itemQ, witem)
 		case <-timer.C:
 			if len(itemQ) != 0 {
@@ -551,6 +579,10 @@ func (b *Bitcask) compact(ndataFile int) error {
 		b.mutex.Lock()
 		defer func() { b.mutex.Unlock() }()
 
+		if b.wchan == nil {
+			return
+		}
+
 		for i := 0; i < ndataFile; i++ {
 			b.instances[i].walFile.RemoveFile()
 		}
@@ -592,6 +624,8 @@ func (b *Bitcask) Destory() {
 		for _, ins := range b.instances {
 			ins.walFile.RemoveFile()
 		}
+
+		close(b.wchan)
 	})
 }
 
@@ -602,5 +636,7 @@ func (b *Bitcask) Close() {
 		for _, ins := range b.instances {
 			ins.walFile.CloseFile(false)
 		}
+
+		close(b.wchan)
 	})
 }
