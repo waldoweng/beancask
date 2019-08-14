@@ -13,8 +13,8 @@ install:
     - go get -d github.com/emicklei/go-restful
     - go get -d github.com/emicklei/go-restful-openapi
     - go get -d github.com/common-nighthawk/go-figure
-	- go get -d github.com/spf13/cobra
-	- go get -d github.com/spf13/viper
+    - go get -d github.com/spf13/cobra
+    - go get -d github.com/spf13/viper
     - go build github.com/waldoweng/beancask
  
 script:
