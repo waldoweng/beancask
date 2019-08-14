@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bufio"
 	"bytes"
 	"io"
 	"log"
@@ -13,8 +14,10 @@ import (
 // BitCaskLogFile struct of the BitcaskLogFile
 // implementation of WALFile interface
 type BitCaskLogFile struct {
+	offset      int
 	FileName    string
 	FileHandle  *os.File
+	FileHandleW *bufio.Writer
 	FileHandleR *os.File
 	mutex       *sync.RWMutex
 }
@@ -37,6 +40,7 @@ func CreateBitcaskLogFile(filename string) *BitCaskLogFile {
 	return &BitCaskLogFile{
 		FileName:    filename,
 		FileHandle:  fileHandle,
+		FileHandleW: bufio.NewWriterSize(fileHandle, 14*1024),
 		FileHandleR: fileHandleR,
 		mutex:       new(sync.RWMutex),
 	}
@@ -65,7 +69,7 @@ func (b *BitCaskLogFile) ReadRecord(offset int64, len int, r *Record) error {
 // return record offset and len
 // return nil for error if success
 func (b *BitCaskLogFile) AppendRecord(r Record, sync bool) (int64, int, error) {
-	offset, _ := b.FileHandle.Seek(0, os.SEEK_CUR)
+	offset := b.offset
 	var buf bytes.Buffer
 	err := r.toBuffer(&buf)
 	if err != nil {
@@ -76,7 +80,7 @@ func (b *BitCaskLogFile) AppendRecord(r Record, sync bool) (int64, int, error) {
 	bbuf := buf.Bytes()
 	var blen = len(bbuf)
 	for true {
-		wlen, err := b.FileHandle.Write(bbuf)
+		wlen, err := b.FileHandleW.Write(bbuf)
 		if err != nil {
 			log.Fatalf("write data to file fail, err:%s", err.Error())
 			return -1, -1, beancaskError.ErrorParseFileData
@@ -93,7 +97,8 @@ func (b *BitCaskLogFile) AppendRecord(r Record, sync bool) (int64, int, error) {
 		b.FileHandle.Sync()
 	}
 
-	return offset, blen, nil
+	b.offset += blen
+	return int64(offset), blen, nil
 }
 
 // IteratorRecord return a channel of record for iterating
@@ -184,6 +189,7 @@ func (b *BitCaskLogFile) CloseFile(remove bool) error {
 // return nil if success
 func (b *BitCaskLogFile) Deactivate() error {
 	if b.FileHandle != nil {
+		b.FileHandleW.Flush()
 		b.FileHandle.Close()
 		b.FileHandle = nil
 	}
@@ -192,5 +198,9 @@ func (b *BitCaskLogFile) Deactivate() error {
 
 // Sync flush all data to disk
 func (b *BitCaskLogFile) Sync() error {
+	err := b.FileHandleW.Flush()
+	if err != nil {
+		return err
+	}
 	return b.FileHandle.Sync()
 }

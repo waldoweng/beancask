@@ -218,7 +218,7 @@ func BenchmarkBitcask_ConcurrentWrite(benchmark *testing.B) {
 
 func TestMain(m *testing.M) {
 	log.SetFlags(log.Ltime | log.Lshortfile)
-	b = NewBitcask()
+	b = NewBitcask(CreateOption{})
 	result := m.Run()
 	b.Destory()
 	os.Exit(result)

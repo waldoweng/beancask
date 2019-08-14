@@ -231,9 +231,23 @@ func createBitcaskInstance(name string) (*bitcaskInstance, error) {
 	return &bitcaskInstance{hashTable, walFile}, nil
 }
 
+// CreateOption options for bitcask creation
+type CreateOption struct {
+	MaxKeySize    int
+	MaxValueSize  int
+	CompactSize   int
+	DataDir       string
+	ActiveDataDir string
+	LogLevel      string
+	InfoLog       *log.Logger
+	DebugLog      *log.Logger
+	ErrorLog      *log.Logger
+}
+
 // Bitcask the bitcask storage struct
 type Bitcask struct {
-	wchan chan struct {
+	options CreateOption
+	wchan   chan struct {
 		key    string
 		record Record
 		result chan error
@@ -247,8 +261,9 @@ type Bitcask struct {
 }
 
 // NewBitcask create a new Bitcask struct
-func NewBitcask() *Bitcask {
+func NewBitcask(options CreateOption) *Bitcask {
 	b := Bitcask{
+		options:        options,
 		mutex:          new(sync.RWMutex),
 		wg:             new(sync.WaitGroup),
 		compacting:     0,
@@ -498,7 +513,7 @@ func (b *Bitcask) realSet() {
 							})
 						}
 
-						if int(offset)+len > 128*1024 {
+						if int(offset)+len > b.options.CompactSize {
 							b.activeInstance.walFile.Sync()
 							err = b.rotateInstance()
 							if err != nil {
