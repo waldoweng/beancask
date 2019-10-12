@@ -206,14 +206,21 @@ func BenchmarkBitcask_RandomReadWrite(benchmark *testing.B) {
 }
 
 func BenchmarkBitcask_ConcurrentWrite(benchmark *testing.B) {
-	benchmark.SetParallelism(20)
-	benchmark.RunParallel(func(pb *testing.PB) {
-		var i int32
-		for pb.Next() {
-			atomic.AddInt32(&i, 1)
-			b.Set(fmt.Sprintf("benchmark concurrent write key %d", i), fmt.Sprintf("benchmark concurrent write value %d", i))
-		}
-	})
+	benchFunc := func(benchmark *testing.B, parallelism int) {
+		benchmark.SetParallelism(parallelism)
+		benchmark.RunParallel(func(pb *testing.PB) {
+			var i int32
+			for pb.Next() {
+				atomic.AddInt32(&i, 1)
+				b.Set(fmt.Sprintf("benchmark concurrent write key %d", i), fmt.Sprintf("benchmark concurrent write value %d", i))
+			}
+		})
+	}
+
+	benchmark.Run("parallelism = 5", func(benchmark *testing.B) { benchFunc(benchmark, 5) })
+	benchmark.Run("parallelism = 10", func(benchmark *testing.B) { benchFunc(benchmark, 10) })
+	benchmark.Run("parallelism = 30", func(benchmark *testing.B) { benchFunc(benchmark, 30) })
+	benchmark.Run("parallelism = 100", func(benchmark *testing.B) { benchFunc(benchmark, 100) })
 }
 
 func TestMain(m *testing.M) {
@@ -221,7 +228,7 @@ func TestMain(m *testing.M) {
 	b = NewBitcask(CreateOption{
 		MaxKeySize:   1024,
 		MaxValueSize: 1024 * 1024,
-		CompactSize:  128 * 1024,
+		CompactSize:  512 * 1024 * 1024,
 	})
 	result := m.Run()
 	b.Destory()
